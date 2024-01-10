@@ -25,7 +25,7 @@ if opt.dataset == 'diginetica':
 elif opt.dataset =='yoochoose':
     dataset = 'yoochoose-clicks.dat'
 
-print("-- Starting @ %ss" % datetime.datetime.now())
+print("-- Starting @ %ss" % datetime.datetime.now())  #hu
 with open(dataset, "r") as f:
     if opt.dataset == 'yoochoose':
         reader = csv.DictReader(f, delimiter=',')
