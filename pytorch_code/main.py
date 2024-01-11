@@ -31,6 +31,7 @@ print(opt)
 
 
 def main():
+    # 加载数据集
     train_data = pickle.load(open('../datasets/' + opt.dataset + '/train.txt', 'rb'))
     if opt.validation:
         train_data, valid_data = split_validation(train_data, opt.valid_portion)
@@ -39,6 +40,8 @@ def main():
         test_data = pickle.load(open('../datasets/' + opt.dataset + '/test.txt', 'rb'))
     # all_train_seq = pickle.load(open('../datasets/' + opt.dataset + '/all_train_seq.txt', 'rb'))
     # g = build_graph(all_train_seq)
+    
+    # 构建和加载模型
     train_data = Data(train_data, shuffle=True)
     test_data = Data(test_data, shuffle=False)
     # del all_train_seq, g
@@ -55,6 +58,7 @@ def main():
     best_result = [0, 0]
     best_epoch = [0, 0]
     bad_counter = 0
+    # 训练和测试
     for epoch in range(opt.epoch):
         print('-------------------------------------------------------')
         print('epoch: ', epoch)
@@ -73,6 +77,7 @@ def main():
         bad_counter += 1 - flag
         if bad_counter >= opt.patience:
             break
+    # 输出运行时间
     print('-------------------------------------------------------')
     end = time.time()
     print("Run time: %f s" % (end - start))

@@ -20,16 +20,16 @@ class GNN(Module):
     # 初始化
     def __init__(self, hidden_size, step=1):
         super(GNN, self).__init__()
-        self.step = step
+        self.step = step  # 信息传递的层数， GNN 的迭代次数
         self.hidden_size = hidden_size
-        self.input_size = hidden_size * 2
-        self.gate_size = 3 * hidden_size
-        self.w_ih = Parameter(torch.Tensor(self.gate_size, self.input_size))
-        self.w_hh = Parameter(torch.Tensor(self.gate_size, self.hidden_size))
-        self.b_ih = Parameter(torch.Tensor(self.gate_size))
-        self.b_hh = Parameter(torch.Tensor(self.gate_size))
-        self.b_iah = Parameter(torch.Tensor(self.hidden_size))
-        self.b_oah = Parameter(torch.Tensor(self.hidden_size))
+        self.input_size = hidden_size * 2  # 输入的维度大小，等于隐藏状态的两倍，因为考虑了入度和出度两个方向的信息
+        self.gate_size = 3 * hidden_size  # 门控单元的维度大小，为 3 倍的隐藏状态大小，因为使用了三个门（重置门、更新门、新信息门）
+        self.w_ih = Parameter(torch.Tensor(self.gate_size, self.input_size))  # 通过线性变换，用于计算输入到门控单元的权重
+        self.w_hh = Parameter(torch.Tensor(self.gate_size, self.hidden_size))  # 通过线性变换，用于计算隐藏状态到门控单元的权重
+        self.b_ih = Parameter(torch.Tensor(self.gate_size))   # 输入到门控单元的偏置项
+        self.b_hh = Parameter(torch.Tensor(self.gate_size))   # 隐藏状态到门控单元的偏置项
+        self.b_iah = Parameter(torch.Tensor(self.hidden_size))  # 入度矩阵的偏置项
+        self.b_oah = Parameter(torch.Tensor(self.hidden_size))  # 出度矩阵的偏置项
 
         self.linear_edge_in = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
         self.linear_edge_out = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
@@ -65,35 +65,42 @@ class GNN(Module):
 class SessionGraph(Module):
     def __init__(self, opt, n_node):
         super(SessionGraph, self).__init__()
-        self.hidden_size = opt.hiddenSize
+        self.hidden_size = opt.hiddenSize  # 定义隐藏层大小
         self.n_node = n_node
-        self.batch_size = opt.batchSize
+        self.batch_size = opt.batchSize  # 批处理大小
         self.nonhybrid = opt.nonhybrid
-        self.embedding = nn.Embedding(self.n_node, self.hidden_size)
+        self.embedding = nn.Embedding(self.n_node, self.hidden_size)  # 嵌入层
         self.gnn = GNN(self.hidden_size, step=opt.step)
         self.linear_one = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
         self.linear_two = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
         self.linear_three = nn.Linear(self.hidden_size, 1, bias=False)
         self.linear_transform = nn.Linear(self.hidden_size * 2, self.hidden_size, bias=True)
         self.loss_function = nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=opt.lr, weight_decay=opt.l2)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=opt.lr, weight_decay=opt.l2)   # 优化器； Lr 学习率
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=opt.lr_dc_step, gamma=opt.lr_dc)
         self.reset_parameters()
-
+    
+    # 用于初始化模型参数，采用均匀分布初始化权重
     def reset_parameters(self):
         stdv = 1.0 / math.sqrt(self.hidden_size)
         for weight in self.parameters():
             weight.data.uniform_(-stdv, stdv)
-    # 对于公式8
+    # 公式8
     def compute_scores(self, hidden, mask):
+        # 用于获取每个序列的最后一个有效项目的隐藏状态
         ht = hidden[torch.arange(mask.shape[0]).long(), torch.sum(mask, 1) - 1]  # batch_size x latent_size
+        # 对 ht 进行线性变换
         q1 = self.linear_one(ht).view(ht.shape[0], 1, ht.shape[1])  # batch_size x 1 x latent_size
+        # 对整个序列的隐藏状态 hidden 进行线性变换
         q2 = self.linear_two(hidden)  # batch_size x seq_length x latent_size
+        # 得到注意力权重
         alpha = self.linear_three(torch.sigmoid(q1 + q2))
         a = torch.sum(alpha * hidden * mask.view(mask.shape[0], -1, 1).float(), 1)
-        if not self.nonhybrid:
+        if not self.nonhybrid: # # 如果模型是混合模型
             a = self.linear_transform(torch.cat([a, ht], 1))
+        # b 是通过索引获取嵌入层中项目的权重矩阵
         b = self.embedding.weight[1:]  # n_nodes x latent_size
+        # 最终的推荐分数，a 乘以 b 的转置
         scores = torch.matmul(a, b.transpose(1, 0))
         return scores
     
